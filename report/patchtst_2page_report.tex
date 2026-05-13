@@ -1,0 +1,86 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=0.72in]{geometry}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+
+\setlength{\parskip}{0.35em}
+\setlength{\parindent}{0pt}
+\setlist[itemize]{leftmargin=1.2em, itemsep=0.1em, topsep=0.1em}
+\titlespacing*{\section}{0pt}{0.55em}{0.25em}
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.45em}{}
+
+\title{\vspace{-1.2em}\textbf{Re-implementing PatchTST for Long-term Multivariate Forecasting}}
+\author{Mingde Zhou (zm339) \\ CS 4782 Final Project Re-implementation}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-1.4em}
+
+\section{Introduction}
+
+This project re-implements the supervised forecasting component of \textit{A Time Series is Worth 64 Words: Long-term Forecasting with Transformers} by Nie, Nguyen, Sinthong, and Kalagnanam, published at ICLR 2023. The paper argues that Transformer-based time-series forecasting can be competitive when the input representation is redesigned for time-series structure. Its two central ideas are \textbf{patching}, which groups neighboring time steps into subseries-level tokens, and \textbf{channel independence}, which processes each variable as a separate univariate series while sharing the same Transformer weights.
+
+The goal of this project is to reproduce a representative supervised multivariate long-term forecasting result and provide a compact GitHub-style project structure containing code, data, results, and documentation.
+
+\section{Chosen Result}
+
+The chosen result is Table 3 of the paper, specifically the Weather dataset under the PatchTST/42 supervised multivariate setting. This result directly supports the paper's main claim: simple vanilla Transformer encoders can work well for long-term time-series forecasting when patching and channel independence are used. I evaluate the same four prediction horizons used in the paper: 96, 192, 336, and 720 time steps, with look-back length 336.
+
+\section{Methodology}
+
+We formulate the task as supervised multivariate long-term forecasting. Given a historical window \(X_{1:L} \in \mathbb{R}^{L \times C}\), where \(L=336\) and \(C=21\) for the Weather dataset, the model predicts a future window \(\hat{X}_{L+1:L+T} \in \mathbb{R}^{T \times C}\). We evaluate four horizons \(T \in \{96, 192, 336, 720\}\). The data are split into train, validation, and test segments following the common long-term forecasting benchmark protocol, and the variables are standardized using statistics from the training split.
+
+Our model follows the main PatchTST design: patch-based tokenization plus channel-independent temporal modeling. For each variable, the input sequence is first normalized using RevIN-style instance normalization. The normalized sequence is padded by repeating the last observed value, then divided into fixed-length temporal patches with \(\texttt{patch\_len}=16\) and \(\texttt{stride}=8\). Each patch is treated as one token, which reduces the effective Transformer sequence length and gives each token local temporal context.
+
+To implement channel independence, all channels share the same embedding layer, Transformer encoder, and prediction head, but each channel is processed as its own univariate sequence. Concretely, after patch extraction the channel dimension is folded into the batch dimension, so the Transformer learns temporal patterns without directly mixing variables at the input-token level. The resulting channel-wise predictions are then reshaped back into a multivariate forecast.
+
+The reimplemented architecture contains:
+
+\begin{itemize}
+    \item a linear patch embedding with learnable positional embeddings;
+    \item a stack of vanilla Transformer encoder blocks using multi-head self-attention;
+    \item GELU feed-forward layers, residual connections, dropout, and BatchNorm;
+    \item a flatten prediction head that maps encoded patches to the target horizon;
+    \item RevIN denormalization to return predictions to the original scale.
+\end{itemize}
+
+The model is trained with mean squared error loss and evaluated with MSE and MAE. We use the paper's PatchTST/42-style configuration for Weather: 3 encoder layers, 16 attention heads, model dimension 128, feed-forward dimension 256, dropout 0.2, patch length 16, and stride 8. To keep the reproduction feasible, the final runs used 10 epochs with patience 3 rather than the longer training budget used by the original paper. Self-supervised pretraining and decomposition were treated as out of scope.
+
+\section{Results and Analysis}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{rrrrr}
+\toprule
+Prediction Length & Paper MSE & Paper MAE & Reimpl. MSE & Reimpl. MAE \\
+\midrule
+96  & 0.152 & 0.199 & 0.1578 & 0.2082 \\
+192 & 0.197 & 0.243 & 0.2024 & 0.2485 \\
+336 & 0.249 & 0.283 & 0.2532 & 0.2863 \\
+720 & 0.320 & 0.335 & 0.3254 & 0.3392 \\
+\bottomrule
+\end{tabular}
+\caption{Weather multivariate long-term forecasting results. Paper values are PatchTST/42 results from Table 3.}
+\end{table}
+
+The reproduced results closely follow the paper's Weather results across all horizons. The gap is small and consistent: the reimplementation is slightly worse, which is expected because the run used only 10 epochs and a simplified clean-room implementation. The error increases as the prediction horizon grows, matching the expected long-horizon forecasting pattern. Independent checkpoint-load inference produced the same metrics as post-training test evaluation, and the generated prediction arrays were finite with expected shapes.
+
+The main implementation challenges were not the Transformer blocks themselves, but matching the data and tensor conventions: \texttt{[batch, length, channel]} at the runner boundary, \texttt{[batch, channel, patch, patch\_len]} during patching, and channel-independent reshaping into the batch dimension. Another practical issue was dependency drift: the official code used \texttt{np.Inf}, which required NumPy 1.x rather than NumPy 2.x.
+
+\section{Reflections}
+
+This reimplementation reinforced the paper's core lesson: representation design can matter as much as architectural novelty. Patching gives each token local temporal meaning and reduces attention cost, while channel independence prevents the model from prematurely mixing heterogeneous variables. A simple Transformer becomes effective once the input structure is aligned with the forecasting task.
+
+Given more time, I would run the original epoch budget, add Traffic and Electricity experiments, test patch length and stride ablations, and extend the design with an explicit cross-channel module after the channel-independent temporal encoder.
+
+\section{References}
+
+Nie, Y., Nguyen, N. H., Sinthong, P., \& Kalagnanam, J. (2023). \textit{A Time Series is Worth 64 Words: Long-term Forecasting with Transformers}. ICLR 2023.
+
+
+\end{document}

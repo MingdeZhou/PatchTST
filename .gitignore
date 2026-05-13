@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+
+# Training artifacts can be regenerated.
+code/checkpoints/
+code/results/
+code/test_results/
+code/logs/
+code/result.txt
+
+# Local environments and temporary files.
+.venv/
+env/
+nohup.out
