@@ -105,3 +105,12 @@ The re-implementation closely reproduces the Weather results from the original p
 - Yuqi Nie, Nam H. Nguyen, Phanwadee Sinthong, and Jayant Kalagnanam. "A Time Series is Worth 64 Words: Long-term Forecasting with Transformers." ICLR 2023.
 - Official PatchTST repository: https://github.com/yuqinie98/PatchTST
 - Autoformer/PatchTST benchmark datasets linked by the official repository.
+
+
+
+
+
+
+git branch -M main
+git remote add origin https://github.com/MingdeZhou/PatchTST
+git push -u origin main
